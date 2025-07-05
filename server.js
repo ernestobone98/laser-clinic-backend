@@ -238,8 +238,7 @@ app.post('/api/proceduras', async (req, res) => {
             VALUES (:id_procedura, :id_zona, :pulsaciones)
         `;
 
-        // Debug log the zonas data
-        console.log('Processing zonas:', JSON.stringify(zonas, null, 2));
+        
 
         for (const zona of zonas) {
             if (zona.id_zona === undefined) {
@@ -251,11 +250,7 @@ app.post('/api/proceduras', async (req, res) => {
                 ? null 
                 : zona.pulsaciones;
             
-            console.log('Inserting zona:', {
-                id_procedura: newProceduraId,
-                id_zona: zona.id_zona,
-                pulsaciones: pulsacionesValue
-            });
+            
 
             try {
                 const result = await connection.execute(
@@ -267,7 +262,7 @@ app.post('/api/proceduras', async (req, res) => {
                     },
                     { autoCommit: false } // Keep the transaction open
                 );
-                console.log('Insert result:', result);
+                
             } catch (error) {
                 console.error('Error inserting zona:', error);
                 throw error; // Re-throw to be caught by the outer try-catch
@@ -288,10 +283,10 @@ app.post('/api/proceduras', async (req, res) => {
             try {
                 await connection.rollback();
             } catch (rollbackErr) {
-                console.error('Error rolling back transaction:', rollbackErr);
+                
             }
         }
-        console.error('Error creating procedure:', err);
+        
         res.status(500).json({ 
             error: 'Failed to create procedure',
             details: err.message 
@@ -302,7 +297,7 @@ app.post('/api/proceduras', async (req, res) => {
             try {
                 await connection.close();
             } catch (closeErr) {
-                console.error('Error closing connection:', closeErr);
+                
             }
         }
     }
@@ -340,12 +335,12 @@ app.delete('/api/proceduras/:id', async (req, res) => {
             rowsAffected: result.rowsAffected 
         });
     } catch (err) {
-        console.error('Error deleting procedure:', err);
+        
         if (connection) {
             try {
                 await connection.rollback();
             } catch (rollbackErr) {
-                console.error('Error rolling back transaction:', rollbackErr);
+                
             }
         }
         res.status(500).json({ 
@@ -430,10 +425,10 @@ app.put('/api/proceduras/:id', async (req, res) => {
           try {
               await connection.rollback();
           } catch (rollbackErr) {
-              console.error('Error rolling back transaction:', rollbackErr);
+              
           }
       }
-      console.error('Error updating procedure:', err);
+      
       res.status(500).json({ 
           error: 'Failed to update procedure',
           details: err.message 
@@ -452,9 +447,9 @@ app.put('/api/proceduras/:id', async (req, res) => {
 
 // --- Server Initialization and Shutdown ---
 async function startup() {
-  console.log('Starting application');
+  
   try {
-    console.log('Initializing database module');
+    
     await database.initialize();
   } catch (err) {
     console.error(err);
@@ -462,22 +457,22 @@ async function startup() {
   }
 
   app.listen(port, () => {
-    console.log(`Backend server running at http://localhost:${port}`);
+    
   });
 }
 
 async function shutdown(e) {
   let err = e;
-  console.log('Shutting down');
+  
   try {
-    console.log('Closing database module');
+    
     await database.close();
   } catch (e) {
     console.error(e);
     err = err || e;
   }
 
-  console.log('Exiting process');
+  
   if (err) {
     process.exit(1); // Non-zero failure code
   } else {
@@ -490,17 +485,13 @@ startup();
 
 // Graceful shutdown
 process.on('SIGTERM', () => {
-  console.log('Received SIGTERM');
   shutdown();
 });
 
 process.on('SIGINT', () => {
-  console.log('Received SIGINT');
   shutdown();
 });
 
 process.on('uncaughtException', err => {
-  console.log('Uncaught exception');
-  console.error(err);
   shutdown(err);
 });
