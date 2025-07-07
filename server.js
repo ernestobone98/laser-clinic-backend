@@ -456,7 +456,7 @@ async function startup() {
     process.exit(1); // Non-zero failure code
   }
 
-  app.listen(port, () => {
+  app.listen(port, '0.0.0.0', () => {
     
   });
 }
