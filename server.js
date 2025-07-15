@@ -127,6 +127,7 @@ app.get('/api/pacientes/:id/proceduras', async (req, res) => {
       p.id_procedura AS "idProcedura",
       p.data,
       p.obshta_cena AS "obshtaCena",
+      p."COMMENT" AS "comment",
       JSON_ARRAYAGG(
         JSON_OBJECT(
           'zona' VALUE z.nazvanie,
@@ -142,7 +143,7 @@ app.get('/api/pacientes/:id/proceduras', async (req, res) => {
     WHERE 
       p.id_paciente = :id_paciente
     GROUP BY 
-      p.id_procedura, p.data, p.obshta_cena
+      p.id_procedura, p.data, p.obshta_cena, p."COMMENT"
     ORDER BY 
       p.data DESC
   `;
@@ -155,7 +156,7 @@ app.get('/api/pacientes/:id/proceduras', async (req, res) => {
       idProcedura: row.idProcedura,
       data: row.DATA,
       obshtaCena: row.obshtaCena,
-      // Parse the uppercase ZONAS property and assign it to a lowercase 'zonas' key
+      comment: row.comment,
       zonas: typeof row.ZONAS === 'string' ? JSON.parse(row.ZONAS) : row.ZONAS
     }));
     
@@ -176,12 +177,13 @@ app.get('/api/proceduras', async (req, res) => {
             pa.ime AS "nombrePaciente",
             p.data,
             p.obshta_cena AS "obshtaCena",
+            p."COMMENT" AS "comment",
             zt.nazvanie AS "zona"
         FROM procedura p
         JOIN paciente pa ON p.id_paciente = pa.id_paciente
         JOIN procedura_zona pz ON p.id_procedura = pz.id_procedura
         JOIN zona_telo zt ON pz.id_zona = zt.id_zona
-        GROUP BY p.id_procedura, p.id_paciente, pa.ime, p.data, p.obshta_cena, zt.nazvanie
+        GROUP BY p.id_procedura, p.id_paciente, pa.ime, p.data, p.obshta_cena, p."COMMENT", zt.nazvanie
         ORDER BY p.data DESC
     `;
     try {
@@ -197,7 +199,8 @@ const oracledb = require('oracledb');
 
 app.post('/api/proceduras', async (req, res) => {
     // FIX: Changed to match the incoming request payload
-    const { id_paciente, data, obshta_cena, zonas } = req.body;
+    const { id_paciente, data, obshta_cena, zonas, comment } = req.body;
+    console.log('Received data for new procedure:', req.body);
     
     // FIX: Updated validation to use id_paciente
     if (!id_paciente || !data || obshta_cena === undefined || !Array.isArray(zonas)) {
@@ -212,22 +215,21 @@ app.post('/api/proceduras', async (req, res) => {
 
         // 1. Insert into the main 'procedura' table.
         const proceduraQuery = `
-            INSERT INTO procedura (id_paciente, data, obshta_cena)
-            VALUES (:id_paciente, TO_DATE(:data, 'YYYY-MM-DD'), :obshta_cena)
+            INSERT INTO procedura (id_paciente, data, obshta_cena, "COMMENT")
+            VALUES (:id_paciente, TO_DATE(:data, 'YYYY-MM-DD'), :obshta_cena, :comment_text)
             RETURNING id_procedura INTO :new_id
         `;
         
         const result = await connection.execute(
             proceduraQuery,
             {
-                // FIX: Use the correct variable name from the request
                 id_paciente: id_paciente,
                 data: data,
                 obshta_cena: parseFloat(obshta_cena),
-                // This line now works because 'oracledb' is defined
+                comment_text: comment || null,
                 new_id: { type: oracledb.NUMBER, dir: oracledb.BIND_OUT }
             },
-            { autoCommit: false } // IMPORTANT: Do not commit yet, it's a transaction
+            { autoCommit: false }
         );
 
         const newProceduraId = result.outBinds.new_id[0];
@@ -354,14 +356,20 @@ app.delete('/api/proceduras/:id', async (req, res) => {
 app.put('/api/proceduras/:id', async (req, res) => {
   // Get the procedure ID from the URL parameters
   const { id } = req.params;
-  // Get the updated data from the request body
-  const { data, obshta_cena, zonas } = req.body;
+  const { data, obshta_cena, zonas, comment } = req.body;
 
   // Basic validation
   if (!data || obshta_cena === undefined || !Array.isArray(zonas)) {
       return res.status(400).json({ 
           error: 'Missing required fields. Required: data, obshta_cena, and zonas array' 
       });
+  }
+  // Additional validation for numbers
+  if (isNaN(parseFloat(obshta_cena))) {
+      return res.status(400).json({ error: 'obshta_cena must be a valid number' });
+  }
+  if (isNaN(Number(id))) {
+      return res.status(400).json({ error: 'Procedure ID must be a valid number' });
   }
 
   let connection;
@@ -371,7 +379,7 @@ app.put('/api/proceduras/:id', async (req, res) => {
       // Step 1: Update the main procedure record
       const updateProceduraQuery = `
           UPDATE procedura
-          SET data = TO_DATE(:data, 'YYYY-MM-DD'), obshta_cena = :obshta_cena
+          SET data = TO_DATE(:data, 'YYYY-MM-DD'), obshta_cena = :obshta_cena, "COMMENT" = :comment_text
           WHERE id_procedura = :id
       `;
       await connection.execute(
@@ -379,9 +387,10 @@ app.put('/api/proceduras/:id', async (req, res) => {
           {
               data,
               obshta_cena: parseFloat(obshta_cena),
+              comment_text: comment || null,
               id
           },
-          { autoCommit: false } // Do not commit yet
+          { autoCommit: false }
       );
 
       // Step 2: Delete all old zone associations for this procedure
@@ -456,7 +465,7 @@ async function startup() {
     process.exit(1); // Non-zero failure code
   }
 
-  app.listen(port, '0.0.0.0', () => {
+  app.listen(port, () => {
     
   });
 }
