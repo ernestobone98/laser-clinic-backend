@@ -18,7 +18,7 @@ app.use(express.json());
 
 // --- API Endpoints for 'paciente' table ---
 app.get('/api/pacientes', async (req, res) => {
-  const query = `SELECT id_paciente "id", ime, pol, telefon, email FROM paciente`;
+  const query = `SELECT id_paciente "id", ime, pol, telefon, email, balance FROM paciente`;
   try {
     const result = await database.simpleExecute(query);
     res.json(result.rows);
@@ -27,18 +27,38 @@ app.get('/api/pacientes', async (req, res) => {
   }
 });
 
+// Get a patient by ID
+app.get('/api/pacientes/:id', async (req, res) => {
+  const patientId = parseInt(req.params.id, 10);
+  if (isNaN(patientId)) {
+    return res.status(400).json({ error: 'Invalid patient ID' });
+  }
+
+  const query = `SELECT id_paciente "id", ime, pol, telefon, email, balance FROM paciente WHERE id_paciente = :id_paciente`;
+  const binds = { id_paciente: patientId };
+  try {
+    const result = await database.simpleExecute(query, binds);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Patient not found' });
+    }
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Add new patient
 app.post('/api/pacientes', async (req, res) => {
-  const { ime, pol, telefon, email } = req.body;
-  console.log('Received data for new patient:', { ime, pol, telefon, email });
+  const { ime, pol, telefon, email, balance } = req.body;
+  console.log('Received data for new patient:', { ime, pol, telefon, email, balance });
 
   if (!ime) {
     return res.status(400).json({ error: 'Ime is required' });
   }
 
-  const query = `INSERT INTO paciente (ime, pol, telefon, email) VALUES (:ime, :pol, :telefon, :email)`;
+  const query = `INSERT INTO paciente (ime, pol, telefon, email, balance) VALUES (:ime, :pol, :telefon, :email, :balance)`;
 
-  const binds = { ime, pol, telefon, email };
+  const binds = { ime, pol, telefon, email, balance };
   const options = {
     autoCommit: true, // Commit the transaction
   };
@@ -59,13 +79,13 @@ app.put('/api/pacientes/:id', async (req, res) => {
     return res.status(400).json({ error: 'Invalid patient ID' });
   }
 
-  const { ime, pol, telefon, email } = req.body;
+  const { ime, pol, telefon, email, balance } = req.body;
   if (!ime) {
     return res.status(400).json({ error: 'Ime is required' });
   }
 
-  const query = `UPDATE paciente SET ime = :ime, pol = :pol, telefon = :telefon, email = :email WHERE id_paciente = :id_paciente`;
-  const binds = { ime, pol, telefon, email, id_paciente: patientId };
+  const query = `UPDATE paciente SET ime = :ime, pol = :pol, telefon = :telefon, email = :email, balance = :balance WHERE id_paciente = :id_paciente`;
+  const binds = { ime, pol, telefon, email, balance, id_paciente: patientId };
   const options = { autoCommit: true };
 
   try {
