@@ -65,6 +65,14 @@ app.post('/api/pacientes', async (req, res) => {
 
   try {
     const result = await database.simpleExecute(query, binds, options);
+    if (result.rowsAffected === 1) {
+      // Get the last inserted patient (assuming id_paciente is auto-incremented and highest value is the latest)
+      const getQuery = `SELECT id_paciente "id", ime, pol, telefon, email, balance FROM paciente WHERE id_paciente = (SELECT MAX(id_paciente) FROM paciente)`;
+      const getResult = await database.simpleExecute(getQuery);
+      if (getResult.rows.length > 0) {
+        return res.status(201).json(getResult.rows[0]);
+      }
+    }
     res.status(201).json({ message: 'Patient created successfully', rowsAffected: result.rowsAffected });
   } catch (err) {
     console.error('Error creating patient:', err);
@@ -84,16 +92,38 @@ app.put('/api/pacientes/:id', async (req, res) => {
     return res.status(400).json({ error: 'Ime is required' });
   }
 
-  const query = `UPDATE paciente SET ime = :ime, pol = :pol, telefon = :telefon, email = :email, balance = :balance WHERE id_paciente = :id_paciente`;
-  const binds = { ime, pol, telefon, email, balance, id_paciente: patientId };
-  const options = { autoCommit: true };
+  // get the balance from the paciente with the given id, this will be called originalBalance
+  const originalQuery = `SELECT balance FROM paciente WHERE id_paciente = :id_paciente`;
+  const originalBinds = { id_paciente: patientId };
+  let originalBalance;
 
   try {
+    const originalResult = await database.simpleExecute(originalQuery, originalBinds);
+    if (originalResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Patient not found' });
+    }
+    originalBalance = originalResult.rows[0].BALANCE;
+    if (originalBalance === null || originalBalance === undefined) {
+      originalBalance = 0;
+    }
+    // Validate balance
+    let newBalance = originalBalance;
+    if (balance !== undefined) {
+      if (isNaN(parseInt(balance, 10))) {
+        return res.status(400).json({ error: 'Balance must be a valid integer' });
+      }
+      newBalance = originalBalance + parseInt(balance, 10);
+    }
+
+    const query = `UPDATE paciente SET ime = :ime, pol = :pol, telefon = :telefon, email = :email, balance = :balance WHERE id_paciente = :id_paciente`;
+    const binds = { ime, pol, telefon, email, balance: newBalance, id_paciente: patientId };
+    const options = { autoCommit: true };
+
     const result = await database.simpleExecute(query, binds, options);
     if (result.rowsAffected === 0) {
       return res.status(404).json({ error: 'Patient not found' });
     }
-    res.json({ message: 'Patient updated successfully', id: patientId });
+    res.json({ message: 'Patient updated successfully', id: patientId, balance: newBalance });
   } catch (err) {
     console.error('Error updating patient:', err);
     res.status(500).json({ error: err.message });
@@ -219,7 +249,7 @@ const oracledb = require('oracledb');
 
 app.post('/api/proceduras', async (req, res) => {
     // FIX: Changed to match the incoming request payload
-    const { id_paciente, data, obshta_cena, zonas, comment } = req.body;
+    const { id_paciente, data, obshta_cena, zonas, comment, is_paid } = req.body;
     console.log('Received data for new procedure:', req.body);
     
     // FIX: Updated validation to use id_paciente
@@ -291,13 +321,34 @@ app.post('/api/proceduras', async (req, res) => {
             }
         }
 
+        // Update the patient's balance by adding obshta_cena only if is_paid is false
+        let newBalance = null;
+        if (is_paid === false) {
+            // 1. Get the current balance
+            const balanceQuery = `SELECT balance FROM paciente WHERE id_paciente = :id_paciente`;
+            const balanceResult = await connection.execute(balanceQuery, { id_paciente: id_paciente });
+            let currentBalance = 0;
+            if (balanceResult.rows.length > 0 && balanceResult.rows[0].BALANCE !== null && balanceResult.rows[0].BALANCE !== undefined) {
+                currentBalance = balanceResult.rows[0].BALANCE;
+            }
+            // 2. Add obshta_cena to balance
+            newBalance = currentBalance + parseFloat(obshta_cena);
+            // 3. Update the balance in paciente
+            const updateBalanceQuery = `UPDATE paciente SET balance = :balance WHERE id_paciente = :id_paciente`;
+            await connection.execute(updateBalanceQuery, { balance: newBalance, id_paciente: id_paciente });
+        }
+
         // If all inserts were successful, commit the entire transaction
         await connection.commit();
 
-        res.status(201).json({
+        const responseObj = {
             message: 'Procedure created successfully',
             id_procedura: newProceduraId
-        });
+        };
+        if (newBalance !== null) {
+            responseObj.updated_balance = newBalance;
+        }
+        res.status(201).json(responseObj);
 
     } catch (err) {
         // If any error occurred, roll back the entire transaction
