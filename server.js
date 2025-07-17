@@ -333,7 +333,6 @@ app.post('/api/proceduras', async (req, res) => {
             }
             // 2. Subtract obshta_cena from balance
             newBalance = currentBalance - parseFloat(obshta_cena);
-            console.log('New balance: ', newBalance, 'current balance: ', currentBalance, 'obshta_cena: ', obshta_cena);
             // 3. Update the balance in paciente
             const updateBalanceQuery = `UPDATE paciente SET balance = :balance WHERE id_paciente = :id_paciente`;
             await connection.execute(updateBalanceQuery, { balance: newBalance, id_paciente: id_paciente });
