@@ -328,11 +328,12 @@ app.post('/api/proceduras', async (req, res) => {
             const balanceQuery = `SELECT balance FROM paciente WHERE id_paciente = :id_paciente`;
             const balanceResult = await connection.execute(balanceQuery, { id_paciente: id_paciente });
             let currentBalance = 0;
-            if (balanceResult.rows.length > 0 && balanceResult.rows[0].BALANCE !== null && balanceResult.rows[0].BALANCE !== undefined) {
-                currentBalance = balanceResult.rows[0].BALANCE;
+            if (balanceResult.rows.length > 0 && balanceResult.rows[0] !== null && balanceResult.rows[0] !== undefined) {
+                currentBalance = balanceResult.rows[0];
             }
-            // 2. Add obshta_cena to balance
-            newBalance = currentBalance + parseFloat(obshta_cena);
+            // 2. Subtract obshta_cena from balance
+            newBalance = currentBalance - parseFloat(obshta_cena);
+            console.log('New balance: ', newBalance, 'current balance: ', currentBalance, 'obshta_cena: ', obshta_cena);
             // 3. Update the balance in paciente
             const updateBalanceQuery = `UPDATE paciente SET balance = :balance WHERE id_paciente = :id_paciente`;
             await connection.execute(updateBalanceQuery, { balance: newBalance, id_paciente: id_paciente });
