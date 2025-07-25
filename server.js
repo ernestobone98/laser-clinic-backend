@@ -155,7 +155,7 @@ app.delete('/api/pacientes/:id', async (req, res) => {
 
 // --- API Endpoints for 'zona_telo' table ---
 app.get('/api/zonas', async (req, res) => {
-  const query = `SELECT id_zona "idZona", nazvanie, nazvanie_es "nazvanieEs", pol_specifichen "polSpecifichen" FROM zona_telo`;
+  const query = `SELECT id_zona "idZona", nazvanie, nazvanie_es "nazvanieEs", pol_specifichen "polSpecifichen", mean_pulsaciones "meanPulsaciones" FROM zona_telo`;
   try {
     const result = await database.simpleExecute(query);
     res.json(result.rows);
