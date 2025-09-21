@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 const database = require('./database.js');
 
 const app = express();
@@ -164,7 +165,7 @@ app.post('/api/login', async (req, res) => {
     return res.status(400).json({ error: 'Username and password are required' });
   }
 
-  const query = `SELECT id_user "id", username, password_hash FROM "user" WHERE username = :username`;
+  const query = `SELECT id_user "id", username, password_hash "password_hash" FROM "user" WHERE username = :username`;
   const binds = { username };
 
   try {
@@ -174,7 +175,8 @@ app.post('/api/login', async (req, res) => {
     }
 
     const user = result.rows[0];
-    const isValidPassword = await bcrypt.compare(password, user.password_hash);
+    const hashedInput = crypto.createHash('sha256').update(password).digest('hex');
+    const isValidPassword = hashedInput === user.password_hash;
 
     if (!isValidPassword) {
       return res.status(401).json({ error: 'Invalid username or password' });
