@@ -1,13 +1,31 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
+const compression = require('compression');
+const morgan = require('morgan');
+const rateLimit = require('express-rate-limit');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
-const crypto = require('crypto');
 const database = require('./database.js');
 
 const app = express();
 const port = process.env.PORT || 8080;
+
+// Security middleware
+app.use(helmet());
+app.use(compression());
+
+// Logging
+app.use(morgan('combined'));
+
+// Rate limiting
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // limit each IP to 100 requests per windowMs
+  message: 'Too many requests from this IP, please try again later.'
+});
+app.use(limiter);
 
 // CORS configuration
 app.use(cors({
@@ -19,19 +37,42 @@ app.use(cors({
 // Middleware to parse JSON requests
 app.use(express.json());
 
+// JWT verification middleware
+const authenticateToken = (req, res, next) => {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
+
+  if (!token) {
+    return res.status(401).json({ error: 'Access token required' });
+  }
+
+  jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
+    if (err) {
+      return res.status(403).json({ error: 'Invalid or expired token' });
+    }
+    req.user = user;
+    next();
+  });
+};
+
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'OK', timestamp: new Date().toISOString() });
+});
+
 // --- API Endpoints for 'paciente' table ---
-app.get('/api/pacientes', async (req, res) => {
+app.get('/api/pacientes', authenticateToken, async (req, res) => {
   const query = `SELECT id_paciente "id", ime, pol, telefon, email, balance FROM paciente`;
   try {
     const result = await database.simpleExecute(query);
     res.json(result.rows);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // Get a patient by ID
-app.get('/api/pacientes/:id', async (req, res) => {
+app.get('/api/pacientes/:id', authenticateToken, async (req, res) => {
   const patientId = parseInt(req.params.id, 10);
   if (isNaN(patientId)) {
     return res.status(400).json({ error: 'Invalid patient ID' });
@@ -46,12 +87,12 @@ app.get('/api/pacientes/:id', async (req, res) => {
     }
     res.json(result.rows[0]);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // Add new patient
-app.post('/api/pacientes', async (req, res) => {
+app.post('/api/pacientes', authenticateToken, async (req, res) => {
   const { ime, pol, telefon, email, balance } = req.body;
   console.log('Received data for new patient:', { ime, pol, telefon, email, balance });
 
@@ -79,12 +120,12 @@ app.post('/api/pacientes', async (req, res) => {
     res.status(201).json({ message: 'Patient created successfully', rowsAffected: result.rowsAffected });
   } catch (err) {
     console.error('Error creating patient:', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // Update an existing patient
-app.put('/api/pacientes/:id', async (req, res) => {
+app.put('/api/pacientes/:id', authenticateToken, async (req, res) => {
   const patientId = parseInt(req.params.id, 10);
   if (isNaN(patientId)) {
     return res.status(400).json({ error: 'Invalid patient ID' });
@@ -129,12 +170,12 @@ app.put('/api/pacientes/:id', async (req, res) => {
     res.json({ message: 'Patient updated successfully', id: patientId, balance: newBalance });
   } catch (err) {
     console.error('Error updating patient:', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // Delete a patient
-app.delete('/api/pacientes/:id', async (req, res) => {
+app.delete('/api/pacientes/:id', authenticateToken, async (req, res) => {
   const patientId = parseInt(req.params.id, 10);
   if (isNaN(patientId)) {
     return res.status(400).json({ error: 'Invalid patient ID' });
@@ -152,7 +193,7 @@ app.delete('/api/pacientes/:id', async (req, res) => {
     res.json({ message: 'Patient deleted successfully', id: patientId });
   } catch (err) {
     console.error('Error deleting patient:', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -175,16 +216,18 @@ app.post('/api/login', async (req, res) => {
     }
 
     const user = result.rows[0];
-    const hashedInput = crypto.createHash('sha256').update(password).digest('hex');
-    const isValidPassword = hashedInput === user.password_hash;
+    const isValidPassword = await bcrypt.compare(password, user.password_hash);
 
     if (!isValidPassword) {
       return res.status(401).json({ error: 'Invalid username or password' });
     }
 
+    if (!process.env.JWT_SECRET) {
+      throw new Error('JWT_SECRET environment variable is required');
+    }
     const token = jwt.sign(
       { id: user.id, username: user.username },
-      process.env.JWT_SECRET || 'default_secret',
+      process.env.JWT_SECRET,
       { expiresIn: '24h' }
     );
 
@@ -195,24 +238,24 @@ app.post('/api/login', async (req, res) => {
     });
   } catch (err) {
     console.error('Error during login:', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // --- API Endpoints for 'zona_telo' table ---
-app.get('/api/zonas', async (req, res) => {
+app.get('/api/zonas', authenticateToken, async (req, res) => {
   const query = `SELECT id_zona "idZona", nazvanie, nazvanie_es "nazvanieEs", pol_specifichen "polSpecifichen", mean_pulsaciones "meanPulsaciones" FROM zona_telo`;
   try {
     const result = await database.simpleExecute(query);
     res.json(result.rows);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // --- API Endpoints for 'procedura' table ---
 // Get all procedures for a specific patient
-app.get('/api/pacientes/:id/proceduras', async (req, res) => {
+app.get('/api/pacientes/:id/proceduras', authenticateToken, async (req, res) => {
   const patientId = parseInt(req.params.id);
   if (isNaN(patientId)) {
     return res.status(400).json({ error: 'Invalid patient ID' });
@@ -259,13 +302,13 @@ app.get('/api/pacientes/:id/proceduras', async (req, res) => {
     res.json(parsedRows);
   } catch (err) {
     console.error('Error fetching procedures:', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 
 // Get all procedures
-app.get('/api/proceduras', async (req, res) => {
+app.get('/api/proceduras', authenticateToken, async (req, res) => {
     const query = `
         SELECT
             p.id_procedura AS "idProcedura",
@@ -286,14 +329,14 @@ app.get('/api/proceduras', async (req, res) => {
         const result = await database.simpleExecute(query);
         res.json(result.rows);
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 
 // POST new procedure with multiple zones
 const oracledb = require('oracledb'); 
 
-app.post('/api/proceduras', async (req, res) => {
+app.post('/api/proceduras', authenticateToken, async (req, res) => {
     // FIX: Changed to match the incoming request payload
     const { id_paciente, data, obshta_cena, zonas, comment, is_paid } = req.body;
     console.log('Received data for new procedure:', req.body);
@@ -406,9 +449,8 @@ app.post('/api/proceduras', async (req, res) => {
             }
         }
         
-        res.status(500).json({ 
-            error: 'Failed to create procedure',
-            details: err.message 
+        res.status(500).json({
+            error: 'Failed to create procedure'
         });
     } finally {
         // Always release the connection
@@ -423,7 +465,7 @@ app.post('/api/proceduras', async (req, res) => {
 });
 
 // DELETE procedure
-app.delete('/api/proceduras/:id', async (req, res) => {
+app.delete('/api/proceduras/:id', authenticateToken, async (req, res) => {
     const id = parseInt(req.params.id, 10);
     if (isNaN(id)) {
         return res.status(400).json({ error: 'Invalid procedure ID' });
@@ -462,15 +504,14 @@ app.delete('/api/proceduras/:id', async (req, res) => {
                 
             }
         }
-        res.status(500).json({ 
-            error: 'Failed to delete procedure',
-            details: process.env.NODE_ENV === 'development' ? err.message : undefined
+        res.status(500).json({
+            error: 'Failed to delete procedure'
         });
     }
 });
 
 // Edit procedure
-app.put('/api/proceduras/:id', async (req, res) => {
+app.put('/api/proceduras/:id', authenticateToken, async (req, res) => {
   // Get the procedure ID from the URL parameters
   const { id } = req.params;
   const { data, obshta_cena, zonas, comment } = req.body;
@@ -555,9 +596,8 @@ app.put('/api/proceduras/:id', async (req, res) => {
           }
       }
       
-      res.status(500).json({ 
-          error: 'Failed to update procedure',
-          details: err.message 
+      res.status(500).json({
+          error: 'Failed to update procedure'
       });
   } finally {
       // Always release the connection back to the pool

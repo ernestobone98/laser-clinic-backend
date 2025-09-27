@@ -44,6 +44,9 @@ DB_PASSWORD=your_db_password
 DB_CONNECT_STRING=your_connect_string
 TNS_ADMIN=/path/to/your/wallet
 
+# Security Configuration
+JWT_SECRET=your_jwt_secret_key
+
 # Frontend Configuration
 FRONTEND_URL=http://localhost:5173
 ```
@@ -59,6 +62,14 @@ npm start
 The server will start on `http://localhost:8080` by default.
 
 ## API Endpoints
+
+All API endpoints except `/health` and `/api/login` require authentication via JWT token in the Authorization header: `Authorization: Bearer <token>`
+
+### Health
+- `GET /health` - Health check endpoint
+
+### Authentication
+- `POST /api/login` - User login (returns JWT token)
 
 ### Patients
 - `GET /api/pacientes` - Get all patients
@@ -78,6 +89,7 @@ The server will start on `http://localhost:8080` by default.
 
 - `PORT` - Port to run the server on (default: 8080)
 - `FRONTEND_URL` - URL of the frontend application (for CORS)
+- `JWT_SECRET` - Secret key for JWT token signing (required)
 - `DB_USER` - Database username
 - `DB_PASSWORD` - Database password
 - `DB_CONNECT_STRING` - Database connection string
@@ -88,6 +100,7 @@ The server will start on `http://localhost:8080` by default.
 - Never commit sensitive information to version control
 - Keep your `.env` file secure and never share it
 - Use HTTPS in production
+- Passwords are now hashed with bcrypt; existing user passwords need to be reset to use the new hashing method
 
 ## License
 
