@@ -3,6 +3,12 @@ const oracledb = require('oracledb');
 
 async function initialize() {
   try {
+    console.log('Attempting to create DB pool with config:', {
+      user: process.env.DB_USER,
+      connectString: process.env.DB_CONNECT_STRING,
+      walletLocation: process.env.TNS_ADMIN,
+      walletPassword: process.env.DB_WALLET_PASSWORD ? '***' : 'not set'
+    });
     // By not calling initOracleClient, node-oracledb will run in Thin Mode
     // which doesn't require Oracle Instant Client libraries.
     // It will automatically use the wallet location from the TNS_ADMIN env var.
@@ -11,9 +17,16 @@ async function initialize() {
       password: process.env.DB_PASSWORD,
       connectString: process.env.DB_CONNECT_STRING,
       walletLocation: process.env.TNS_ADMIN,
-      walletPassword: process.env.DB_WALLET_PASSWORD
+      walletPassword: process.env.DB_WALLET_PASSWORD,
+      queueTimeout: 120000, // Increase timeout to 2 minutes
+      poolMin: 1,
+      poolMax: 5,
+      poolIncrement: 1,
+      connectTimeout: 60000, // 60 seconds
+      retryCount: 3,
+      retryDelay: 5000 // 5 seconds
     });
-    console.log('Connection pool started');
+    console.log('Connection pool started successfully');
   } catch (err) {
     console.error('Error creating connection pool:', err);
     process.exit(1);

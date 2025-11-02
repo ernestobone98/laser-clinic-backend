@@ -139,4 +139,56 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
+// Get all procedures for a specific patient
+router.get('/:id/proceduras', async (req, res) => {
+  const patientId = parseInt(req.params.id);
+  if (isNaN(patientId)) {
+    return res.status(400).json({ error: 'Invalid patient ID' });
+  }
+
+  const query = `
+    SELECT
+      p.id_procedura AS "idProcedura",
+      p.data,
+      p.obshta_cena AS "obshtaCena",
+      p."COMMENT" AS "comment",
+      JSON_ARRAYAGG(
+        JSON_OBJECT(
+          'zona' VALUE z.nazvanie,
+          'pulsaciones' VALUE pz.pulsaciones
+        )
+      ) AS zonas
+    FROM
+      procedura p
+    JOIN
+      procedura_zona pz ON p.id_procedura = pz.id_procedura
+    JOIN
+      zona_telo z ON z.id_zona = pz.id_zona
+    WHERE
+      p.id_paciente = :id_paciente
+    GROUP BY
+      p.id_procedura, p.data, p.obshta_cena, p."COMMENT"
+    ORDER BY
+      p.data DESC
+  `;
+
+  try {
+    const result = await database.simpleExecute(query, [patientId]);
+
+    // Parse zonas from JSON string to array
+    const parsedRows = result.rows.map(row => ({
+      idProcedura: row.idProcedura,
+      data: row.DATA,
+      obshtaCena: row.obshtaCena,
+      comment: row.comment,
+      zonas: typeof row.ZONAS === 'string' ? JSON.parse(row.ZONAS) : row.ZONAS
+    }));
+
+    res.json(parsedRows);
+  } catch (err) {
+    console.error('Error fetching procedures:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 module.exports = router;

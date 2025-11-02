@@ -7,8 +7,9 @@ WORKDIR /usr/src/app
 # Copy package.json and package-lock.json (if available)
 COPY package*.json ./
 
-# Install dependencies
-RUN npm install --production
+# Install dependencies based on build arg
+ARG NODE_ENV=production
+RUN if [ "$NODE_ENV" = "development" ]; then npm install; else npm install --production; fi
 
 # Copy the rest of the application code
 COPY . .
@@ -17,7 +18,7 @@ COPY . .
 EXPOSE 8080
 
 # Set environment variables (can be overridden at runtime)
-ENV NODE_ENV=production
+ENV NODE_ENV=$NODE_ENV
 
-# Start the server
-CMD ["node", "server.js"]
+# Start the server with nodemon in dev mode
+CMD if [ "$NODE_ENV" = "development" ]; then npx nodemon server.js; else node server.js; fi

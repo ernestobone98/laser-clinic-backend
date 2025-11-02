@@ -1,3 +1,4 @@
+
 const express = require('express');
 const database = require('../config/database');
 const router = express.Router();
@@ -306,18 +307,24 @@ router.put('/:id', async (req, res) => {
 
       // Step 3: Insert the new set of zone associations
       const insertZonaQuery = `
-          INSERT INTO procedura_zona (id_procedura, id_zona)
-          VALUES (:id_procedura, :id_zona)
+          INSERT INTO procedura_zona (id_procedura, id_zona, pulsaciones)
+          VALUES (:id_procedura, :id_zona, :pulsaciones)
       `;
       for (const zona of zonas) {
           if (zona.id_zona === undefined) {
               throw new Error('Each zone object in the array must have an "id_zona" property.');
           }
+          // Convert empty string to null for pulsaciones if needed
+          const pulsacionesValue = (zona.pulsaciones === '' || zona.pulsaciones === null || zona.pulsaciones === undefined)
+              ? null
+              : zona.pulsaciones;
+
           await connection.execute(
               insertZonaQuery,
               {
                   id_procedura: id,
-                  id_zona: zona.id_zona
+                  id_zona: zona.id_zona,
+                  pulsaciones: pulsacionesValue
               },
               { autoCommit: false } // Keep the transaction open
           );

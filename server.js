@@ -14,7 +14,8 @@ async function startup() {
     process.exit(1); // Non-zero failure code
   }
 
-  app.listen(port, () => {
+  console.log('Starting server...');
+  app.listen(port, '0.0.0.0', () => {
     console.log(`Server running on port ${port}`);
   });
 }
@@ -24,7 +25,7 @@ async function shutdown(e) {
 
   try {
 
-    await database.close();
+    // await database.close(); // Temporarily commented out
   } catch (e) {
     console.error(e);
     err = err || e;
