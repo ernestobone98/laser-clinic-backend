@@ -48,16 +48,17 @@ router.get('/', async (req, res) => {
   binds.limit = limit;
 
   try {
-    const result = await database.simpleExecute(query, binds);
-    
     // Prepare binds for count query (only word binds)
     const countBinds = {};
     Object.keys(binds).forEach(key => {
       if (key.startsWith('word')) countBinds[key] = binds[key];
     });
     
-    const countResult = await database.simpleExecute(countQuery, countBinds);
-    const total = countResult.rows[0].total;
+    const [result, countResult] = await Promise.all([
+      database.simpleExecute(query, binds),
+      database.simpleExecute(countQuery, countBinds)
+    ]);
+    const total = countResult.rows[0].TOTAL || countResult.rows[0].total;
 
     res.json({
       data: result.rows,
