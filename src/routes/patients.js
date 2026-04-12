@@ -2,13 +2,72 @@ const express = require('express');
 const database = require('../config/database');
 const router = express.Router();
 
-// Get all patients
+// Get all patients with pagination, search and sorting
 router.get('/', async (req, res) => {
-  const query = `SELECT id_paciente "id", ime, pol, telefon, email, balance FROM paciente`;
+  const page = parseInt(req.query.page, 10) || 1;
+  const limit = parseInt(req.query.limit, 10) || 10;
+  const search = req.query.search || '';
+  const sortBy = req.query.sortBy || 'id'; // default sort column
+  const sortOrder = req.query.sortOrder === 'desc' ? 'DESC' : 'ASC';
+
+  // Validate sortBy to prevent SQL injection
+  const allowedSortColumns = {
+    'id': 'id_paciente',
+    'ime': 'ime',
+    'name': 'ime',
+    'email': 'email',
+    'telefon': 'telefon',
+    'balance': 'balance'
+  };
+  const actualSortColumn = allowedSortColumns[sortBy.toLowerCase()] || 'id_paciente';
+
+  const offset = (page - 1) * limit;
+
+  let query = `SELECT id_paciente "id", ime, pol, telefon, email, balance FROM paciente`;
+  let countQuery = `SELECT count(*) "total" FROM paciente`;
+  let binds = {};
+
+  if (search) {
+    const words = search.toLowerCase().trim().split(/\s+/).filter(word => word.length > 0);
+    if (words.length > 0) {
+      const conditions = words.map((_, i) => 
+        `(LOWER(ime) LIKE :word${i} OR LOWER(email) LIKE :word${i} OR telefon LIKE :word${i})`
+      );
+      const searchFilter = ` WHERE ${conditions.join(' AND ')}`;
+      query += searchFilter;
+      countQuery += searchFilter;
+      words.forEach((word, i) => {
+        binds[`word${i}`] = `%${word}%`;
+      });
+    }
+  }
+
+  // Use Oracle's OFFSET/FETCH for pagination (supported in 12c+)
+  query += ` ORDER BY ${actualSortColumn} ${sortOrder} OFFSET :offset ROWS FETCH NEXT :limit ROWS ONLY`;
+  binds.offset = offset;
+  binds.limit = limit;
+
   try {
-    const result = await database.simpleExecute(query);
-    res.json(result.rows);
+    const result = await database.simpleExecute(query, binds);
+    
+    // Prepare binds for count query (only word binds)
+    const countBinds = {};
+    Object.keys(binds).forEach(key => {
+      if (key.startsWith('word')) countBinds[key] = binds[key];
+    });
+    
+    const countResult = await database.simpleExecute(countQuery, countBinds);
+    const total = countResult.rows[0].total;
+
+    res.json({
+      data: result.rows,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit)
+    });
   } catch (err) {
+    console.error('Error fetching patients:', err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
