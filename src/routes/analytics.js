@@ -10,7 +10,7 @@ const asyncHandler = (fn) => (req, res, next) => {
 // GET /api/analytics/summary
 router.get('/summary', asyncHandler(async (req, res) => {
   const resultPatients = await database.simpleExecute(`SELECT COUNT(*) as "count" FROM paciente`);
-  const resultProcedures = await database.simpleExecute(`SELECT COUNT(*) as "count", NVL(SUM(obshta_cena), 0) as "revenue" FROM procedura`);
+  const resultProcedures = await database.simpleExecute(`SELECT COUNT(*) as "count", NVL(SUM(CASE WHEN NVL(currency, 'BGN') = 'EUR' THEN obshta_cena * 1.95583 ELSE obshta_cena END), 0) as "revenue" FROM procedura`);
   
   res.json({
     totalPatients: resultPatients.rows[0].count,
@@ -23,7 +23,7 @@ router.get('/summary', asyncHandler(async (req, res) => {
 router.get('/top-patients', asyncHandler(async (req, res) => {
   // Find patients generating most revenue
   const query = `
-    SELECT p.id_paciente as "id", p.ime as "name", NVL(SUM(pr.obshta_cena), 0) as "totalSpent", COUNT(pr.id_procedura) as "visits"
+    SELECT p.id_paciente as "id", p.ime as "name", NVL(SUM(CASE WHEN NVL(pr.currency, 'BGN') = 'EUR' THEN pr.obshta_cena * 1.95583 ELSE pr.obshta_cena END), 0) as "totalSpent", COUNT(pr.id_procedura) as "visits"
     FROM paciente p
     JOIN procedura pr ON p.id_paciente = pr.id_paciente
     GROUP BY p.id_paciente, p.ime
@@ -51,7 +51,7 @@ router.get('/popular-zones', asyncHandler(async (req, res) => {
 // GET /api/analytics/monthly-trends
 router.get('/monthly-trends', asyncHandler(async (req, res) => {
   const query = `
-    SELECT TO_CHAR(data, 'YYYY-MM') as "month", COUNT(id_procedura) as "visits", NVL(SUM(obshta_cena), 0) as "revenue"
+    SELECT TO_CHAR(data, 'YYYY-MM') as "month", COUNT(id_procedura) as "visits", NVL(SUM(CASE WHEN NVL(currency, 'BGN') = 'EUR' THEN obshta_cena * 1.95583 ELSE obshta_cena END), 0) as "revenue"
     FROM procedura
     GROUP BY TO_CHAR(data, 'YYYY-MM')
     ORDER BY "month" ASC
