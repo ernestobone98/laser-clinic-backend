@@ -241,6 +241,7 @@ router.get('/:id/proceduras', async (req, res) => {
       p.id_procedura AS "idProcedura",
       p.data,
       p.obshta_cena AS "obshtaCena",
+      NVL(p.currency, 'EUR') AS "currency",
       p."COMMENT" AS "comment",
       JSON_ARRAYAGG(
         JSON_OBJECT(
@@ -257,7 +258,7 @@ router.get('/:id/proceduras', async (req, res) => {
     WHERE
       p.id_paciente = :id_paciente
     GROUP BY
-      p.id_procedura, p.data, p.obshta_cena, p."COMMENT"
+      p.id_procedura, p.data, p.obshta_cena, p.currency, p."COMMENT"
     ORDER BY
       p.data DESC
   `;
@@ -270,6 +271,7 @@ router.get('/:id/proceduras', async (req, res) => {
       idProcedura: row.idProcedura,
       data: row.DATA,
       obshtaCena: row.obshtaCena,
+      currency: row.currency || 'EUR',
       comment: row.comment,
       zonas: typeof row.ZONAS === 'string' ? JSON.parse(row.ZONAS) : row.ZONAS
     }));

@@ -15,6 +15,7 @@ router.get('/pacientes/:id/proceduras', async (req, res) => {
       p.id_procedura AS "idProcedura",
       p.data,
       p.obshta_cena AS "obshtaCena",
+      NVL(p.currency, 'EUR') AS "currency",
       p."COMMENT" AS "comment",
       JSON_ARRAYAGG(
         JSON_OBJECT(
@@ -31,7 +32,7 @@ router.get('/pacientes/:id/proceduras', async (req, res) => {
     WHERE
       p.id_paciente = :id_paciente
     GROUP BY
-      p.id_procedura, p.data, p.obshta_cena, p."COMMENT"
+      p.id_procedura, p.data, p.obshta_cena, p.currency, p."COMMENT"
     ORDER BY
       p.data DESC
   `;
@@ -44,6 +45,7 @@ router.get('/pacientes/:id/proceduras', async (req, res) => {
       idProcedura: row.idProcedura,
       data: row.DATA,
       obshtaCena: row.obshtaCena,
+      currency: row.currency || 'EUR',
       comment: row.comment,
       zonas: typeof row.ZONAS === 'string' ? JSON.parse(row.ZONAS) : row.ZONAS
     }));
@@ -64,13 +66,14 @@ router.get('/', async (req, res) => {
             pa.ime AS "nombrePaciente",
             p.data,
             p.obshta_cena AS "obshtaCena",
+            NVL(p.currency, 'EUR') AS "currency",
             p."COMMENT" AS "comment",
             zt.nazvanie AS "zona"
         FROM procedura p
         JOIN paciente pa ON p.id_paciente = pa.id_paciente
         JOIN procedura_zona pz ON p.id_procedura = pz.id_procedura
         JOIN zona_telo zt ON pz.id_zona = zt.id_zona
-        GROUP BY p.id_procedura, p.id_paciente, pa.ime, p.data, p.obshta_cena, p."COMMENT", zt.nazvanie
+        GROUP BY p.id_procedura, p.id_paciente, pa.ime, p.data, p.obshta_cena, p.currency, p."COMMENT", zt.nazvanie
         ORDER BY p.data DESC
     `;
     try {
@@ -84,7 +87,8 @@ router.get('/', async (req, res) => {
 // POST new procedure with multiple zones
 router.post('/', async (req, res) => {
     // FIX: Changed to match the incoming request payload
-    const { id_paciente, data, obshta_cena, zonas, comment, is_paid } = req.body;
+    const { id_paciente, data, obshta_cena, zonas, comment, is_paid, currency } = req.body;
+    const validCurrency = ['BGN', 'EUR'].includes(currency) ? currency : 'EUR';
     console.log('Received data for new procedure:', req.body);
 
     // FIX: Updated validation to use id_paciente
@@ -100,8 +104,8 @@ router.post('/', async (req, res) => {
 
         // 1. Insert into the main 'procedura' table.
         const proceduraQuery = `
-            INSERT INTO procedura (id_paciente, data, obshta_cena, "COMMENT")
-            VALUES (:id_paciente, TO_DATE(:data, 'YYYY-MM-DD'), :obshta_cena, :comment_text)
+            INSERT INTO procedura (id_paciente, data, obshta_cena, currency, "COMMENT")
+            VALUES (:id_paciente, TO_DATE(:data, 'YYYY-MM-DD'), :obshta_cena, :currency, :comment_text)
             RETURNING id_procedura INTO :new_id
         `;
 
@@ -111,6 +115,7 @@ router.post('/', async (req, res) => {
                 id_paciente: id_paciente,
                 data: data,
                 obshta_cena: parseFloat(obshta_cena),
+                currency: validCurrency,
                 comment_text: comment || null,
                 new_id: { type: database.oracledb.NUMBER, dir: database.oracledb.BIND_OUT }
             },
@@ -260,7 +265,8 @@ router.delete('/:id', async (req, res) => {
 router.put('/:id', async (req, res) => {
   // Get the procedure ID from the URL parameters
   const { id } = req.params;
-  const { data, obshta_cena, zonas, comment } = req.body;
+  const { data, obshta_cena, zonas, comment, currency } = req.body;
+  const validCurrencyEdit = ['BGN', 'EUR'].includes(currency) ? currency : 'EUR';
 
   // Basic validation
   if (!data || obshta_cena === undefined || !Array.isArray(zonas)) {
@@ -283,7 +289,7 @@ router.put('/:id', async (req, res) => {
       // Step 1: Update the main procedure record
       const updateProceduraQuery = `
           UPDATE procedura
-          SET data = TO_DATE(:data, 'YYYY-MM-DD'), obshta_cena = :obshta_cena, "COMMENT" = :comment_text
+          SET data = TO_DATE(:data, 'YYYY-MM-DD'), obshta_cena = :obshta_cena, currency = :currency, "COMMENT" = :comment_text
           WHERE id_procedura = :id
       `;
       await connection.execute(
@@ -291,6 +297,7 @@ router.put('/:id', async (req, res) => {
           {
               data,
               obshta_cena: parseFloat(obshta_cena),
+              currency: validCurrencyEdit,
               comment_text: comment || null,
               id
           },
