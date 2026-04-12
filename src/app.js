@@ -12,6 +12,7 @@ const healthRoutes = require('./routes/health');
 const authRoutes = require('./routes/auth');
 const patientRoutes = require('./routes/patients');
 const procedureRoutes = require('./routes/procedures');
+const analyticsRoutes = require('./routes/analytics');
 
 const app = express();
 
@@ -47,5 +48,6 @@ app.use('/api', authRoutes);
 app.use('/api/pacientes', patientRoutes);
 app.use('/api/proceduras', procedureRoutes);
 app.use('/api/zonas', procedureRoutes); // zonas is in procedures
+app.use('/api/analytics', analyticsRoutes);
 
 module.exports = app;

@@ -72,6 +72,36 @@ router.get('/', async (req, res) => {
   }
 });
 
+// Export all patients (no pagination) with procedure stats, split by gender
+router.get('/export', async (req, res) => {
+  const query = `
+    SELECT
+      p.id_paciente "id",
+      p.ime "ime",
+      p.pol "pol",
+      p.telefon "telefon",
+      p.email "email",
+      NVL(p.balance, 0) "balance",
+      COUNT(pr.id_procedura) "totalProcedures",
+      NVL(SUM(pr.obshta_cena), 0) "totalSpent",
+      MAX(pr.data) "lastVisit"
+    FROM paciente p
+    LEFT JOIN procedura pr ON pr.id_paciente = p.id_paciente
+    GROUP BY p.id_paciente, p.ime, p.pol, p.telefon, p.email, p.balance
+    ORDER BY p.ime ASC
+  `;
+
+  try {
+    const result = await database.simpleExecute(query, {});
+    const women = result.rows.filter(r => r.pol === 'Ж');
+    const men   = result.rows.filter(r => r.pol === 'H');
+    res.json({ women, men });
+  } catch (err) {
+    console.error('Error exporting patients:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Get a patient by ID
 router.get('/:id', async (req, res) => {
   const patientId = parseInt(req.params.id, 10);
@@ -101,19 +131,20 @@ router.post('/', async (req, res) => {
     return res.status(400).json({ error: 'Ime is required' });
   }
 
-  const query = `INSERT INTO paciente (ime, pol, telefon, email, balance) VALUES (:ime, :pol, :telefon, :email, :balance)`;
+  const { oracledb } = database;
+  const query = `INSERT INTO paciente (ime, pol, telefon, email, balance) VALUES (:ime, :pol, :telefon, :email, :balance) RETURNING id_paciente INTO :newId`;
 
-  const binds = { ime, pol, telefon, email, balance };
+  const binds = { ime, pol, telefon, email, balance, newId: { dir: oracledb.BIND_OUT, type: oracledb.NUMBER } };
   const options = {
-    autoCommit: true, // Commit the transaction
+    autoCommit: true,
   };
 
   try {
     const result = await database.simpleExecute(query, binds, options);
-    if (result.rowsAffected === 1) {
-      // Get the last inserted patient (assuming id_paciente is auto-incremented and highest value is the latest)
-      const getQuery = `SELECT id_paciente "id", ime, pol, telefon, email, balance FROM paciente WHERE id_paciente = (SELECT MAX(id_paciente) FROM paciente)`;
-      const getResult = await database.simpleExecute(getQuery);
+    const newId = result.outBinds.newId[0];
+    if (newId) {
+      const getQuery = `SELECT id_paciente "id", ime, pol, telefon, email, balance FROM paciente WHERE id_paciente = :id_paciente`;
+      const getResult = await database.simpleExecute(getQuery, { id_paciente: newId });
       if (getResult.rows.length > 0) {
         return res.status(201).json(getResult.rows[0]);
       }
