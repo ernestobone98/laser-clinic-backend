@@ -49,3 +49,15 @@ coverage
 
 # cache
 .cache/
+
+# Oracle Wallet credentials
+*.zip
+*.sso
+*.p12
+*.pem
+*.jks
+ojdbc.properties
+sqlnet.ora
+tnsnames.ora
+truststore.jks
+wallet/
