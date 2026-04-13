@@ -372,12 +372,73 @@ router.put('/:id', async (req, res) => {
 
 // Get zonas
 router.get('/zonas', async (req, res) => {
-  const query = `SELECT id_zona "idZona", nazvanie, nazvanie_es "nazvanieEs", pol_specifichen "polSpecifichen", mean_pulsaciones "meanPulsaciones" FROM zona_telo`;
+  const query = `SELECT id_zona "idZona", nazvanie, nazvanie_es "nazvanieEs", pol_specifichen "polSpecifichen", mean_pulsaciones "meanPulsaciones" FROM zona_telo ORDER BY nazvanie ASC`;
   try {
     const result = await database.simpleExecute(query);
     res.json(result.rows);
   } catch (err) {
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST new zona
+router.post('/zonas', async (req, res) => {
+  const { nazvanie, nazvanieEs, polSpecifichen, meanPulsaciones } = req.body;
+  if (!nazvanie) {
+    return res.status(400).json({ error: 'nazvanie is required' });
+  }
+
+  const query = `
+    INSERT INTO zona_telo (nazvanie, nazvanie_es, pol_specifichen, mean_pulsaciones)
+    VALUES (:nazvanie, :nazvanie_es, :pol_specifichen, :mean_pulsaciones)
+    RETURNING id_zona INTO :new_id
+  `;
+  try {
+    const connection = await database.getConnection();
+    const result = await connection.execute(query, {
+      nazvanie,
+      nazvanie_es: nazvanieEs || null,
+      pol_specifichen: polSpecifichen || null,
+      mean_pulsaciones: meanPulsaciones || null,
+      new_id: { type: database.oracledb?.NUMBER || 201, dir: database.oracledb?.BIND_OUT || 3003 }
+    }, { autoCommit: true });
+    
+    await connection.close();
+    res.status(201).json({ idZona: result.outBinds.new_id[0], message: 'Zona created' });
+  } catch (err) {
+    console.error('Error creating zona:', err);
+    res.status(500).json({ error: 'Failed to create zona' });
+  }
+});
+
+// PUT edit zona
+router.put('/zonas/:id', async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) {
+    return res.status(400).json({ error: 'Invalid zona ID' });
+  }
+  const { nazvanie, nazvanieEs, polSpecifichen, meanPulsaciones } = req.body;
+  
+  const query = `
+    UPDATE zona_telo
+    SET nazvanie = :nazvanie,
+        nazvanie_es = :nazvanie_es,
+        pol_specifichen = :pol_specifichen,
+        mean_pulsaciones = :mean_pulsaciones
+    WHERE id_zona = :id
+  `;
+  try {
+    await database.simpleExecute(query, {
+      nazvanie,
+      nazvanie_es: nazvanieEs || null,
+      pol_specifichen: polSpecifichen || null,
+      mean_pulsaciones: meanPulsaciones || null,
+      id
+    }, { autoCommit: true });
+    res.json({ message: 'Zona updated' });
+  } catch (err) {
+    console.error('Error updating zona:', err);
+    res.status(500).json({ error: 'Failed to update zona' });
   }
 });
 
