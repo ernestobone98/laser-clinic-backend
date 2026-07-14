@@ -370,12 +370,18 @@ router.put('/:id', async (req, res) => {
   }
 });
 
+let cachedZonas = null;
+
 // Get zonas
 router.get('/zonas', async (req, res) => {
+  if (cachedZonas) {
+    return res.json(cachedZonas);
+  }
   const query = `SELECT id_zona "idZona", nazvanie, nazvanie_es "nazvanieEs", pol_specifichen "polSpecifichen", mean_pulsaciones "meanPulsaciones" FROM zona_telo ORDER BY nazvanie ASC`;
   try {
     const result = await database.simpleExecute(query);
-    res.json(result.rows);
+    cachedZonas = result.rows;
+    res.json(cachedZonas);
   } catch (err) {
     res.status(500).json({ error: 'Internal server error' });
   }
@@ -393,8 +399,9 @@ router.post('/zonas', async (req, res) => {
     VALUES (:nazvanie, :nazvanie_es, :pol_specifichen, :mean_pulsaciones)
     RETURNING id_zona INTO :new_id
   `;
+  let connection;
   try {
-    const connection = await database.getConnection();
+    connection = await database.getConnection();
     const result = await connection.execute(query, {
       nazvanie,
       nazvanie_es: nazvanieEs || null,
@@ -403,11 +410,19 @@ router.post('/zonas', async (req, res) => {
       new_id: { type: database.oracledb?.NUMBER || 201, dir: database.oracledb?.BIND_OUT || 3003 }
     }, { autoCommit: true });
     
-    await connection.close();
+    cachedZonas = null; // Invalidate cache
     res.status(201).json({ idZona: result.outBinds.new_id[0], message: 'Zona created' });
   } catch (err) {
     console.error('Error creating zona:', err);
     res.status(500).json({ error: 'Failed to create zona' });
+  } finally {
+    if (connection) {
+      try {
+        await connection.close();
+      } catch (closeErr) {
+        console.error('Error closing connection:', closeErr);
+      }
+    }
   }
 });
 
@@ -435,6 +450,7 @@ router.put('/zonas/:id', async (req, res) => {
       mean_pulsaciones: meanPulsaciones || null,
       id
     }, { autoCommit: true });
+    cachedZonas = null; // Invalidate cache
     res.json({ message: 'Zona updated' });
   } catch (err) {
     console.error('Error updating zona:', err);

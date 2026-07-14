@@ -18,9 +18,9 @@ async function initialize() {
       connectString: process.env.DB_CONNECT_STRING,
       walletLocation: process.env.TNS_ADMIN,
       walletPassword: process.env.DB_WALLET_PASSWORD,
-      queueTimeout: 120000, // Increase timeout to 2 minutes
+      queueTimeout: 15000, // Fail fast if pool is exhausted instead of 2 minutes
       poolMin: 1,
-      poolMax: 5,
+      poolMax: 15,
       poolIncrement: 1,
       connectTimeout: 60000, // 60 seconds
       retryCount: 3,
@@ -48,6 +48,7 @@ async function simpleExecute(statement, binds = [], opts = {}) {
     result = await connection.execute(statement, binds, opts);
   } catch (err) {
     console.error(err);
+    throw err;
   } finally {
     if (connection) {
       try {
